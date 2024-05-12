@@ -1,0 +1,230 @@
+#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "DIO.h"
+#include "systick.h"
+#include "tm4c123gh6pm.h"
+#include "bitwise_operation.h"
+#include "types.h"
+#include "Scheduler.h"
+#include "SSI.h"
+
+typedef enum {
+    WHITE,
+    RED,
+    GREEN,
+    BLUE
+} State;
+
+typedef enum {
+    CLOCKWISE,
+    ANTI_CLOCKWISE,
+    STOP
+} Direction;
+
+
+State currentState = RED;
+Direction currentDirection = STOP;
+
+uint8 g_counter=0;
+uint32 g_tick=0;
+uint8 g_flag1=0;
+uint8 g_flag2=0;
+uint8 g_flag3=0;
+
+void SysTick_Handler(void)
+{
+ g_tick++;
+
+}
+
+
+void readSwitch(void)
+{
+  if(!(DIO_ReadPin (PORTF, PIN0)) && !(DIO_ReadPin (PORTF, PIN4)))
+  {
+      while (!(SysTick_Value_Get() % 20));
+      if(!(DIO_ReadPin (PORTF, PIN0)) && !(DIO_ReadPin (PORTF, PIN4)))
+  {
+    if (g_flag1==0)
+    {
+      g_flag1=1;
+      g_counter++;
+   
+    }
+  }
+  }
+  else
+  {
+    g_flag1=0;
+  }
+  if (!(DIO_ReadPin (PORTF, PIN0)))
+  {
+    while (!(SysTick_Value_Get() % 20));
+   
+    if (!(DIO_ReadPin (PORTF, PIN0)))
+  {
+    if (g_flag2==0)
+    {
+      g_flag2=1;
+      g_counter++;
+      currentDirection = CLOCKWISE;
+      
+    }
+  }
+ }
+  else
+  {
+    g_flag2=0; 
+  }
+  
+   if (!(DIO_ReadPin (PORTF, PIN4)))
+  {
+    while (!(SysTick_Value_Get() % 20));
+    if (!(DIO_ReadPin (PORTF, PIN4)))
+    {
+      if(g_flag3==0)
+      {
+        g_flag3=1;
+          g_counter++;
+        currentDirection = ANTI_CLOCKWISE;
+      
+
+       
+    }
+   
+  }
+  }
+  else
+  {
+     g_flag3=0;
+  }
+  
+}
+
+
+void switchStates(void)
+{
+  static uint32 prev_counter=0;
+  static uint32 tick= 1;
+  
+  
+   if (currentDirection ==ANTI_CLOCKWISE)
+  {
+    
+    if(currentState==WHITE)
+    {
+      currentState=RED;
+    }
+    else if(currentState==RED)
+    {
+      currentState=BLUE;
+    }
+    else
+    {
+    currentState--;
+    }
+   
+  }
+  
+  else if(currentDirection == CLOCKWISE)
+   {
+   
+     if(currentState==BLUE)
+    {
+      currentState=RED;
+    }
+    else
+    {
+       currentState++;
+    }
+    
+   }
+   
+ if ((prev_counter==g_counter) && (tick%11==0))
+  {
+    currentState=WHITE;
+    currentDirection=STOP;
+  }
+  else if(prev_counter!=g_counter)
+  {
+    prev_counter=g_counter;
+    tick=1;
+  }
+  else
+  {
+    tick++;
+  }
+
+  switch(currentState) {
+    case WHITE:
+      DIO_WritePin (PORTF, PIN1, LOGIC_HIGH);
+      DIO_WritePin (PORTF, PIN2, LOGIC_HIGH);
+      DIO_WritePin (PORTF, PIN3, LOGIC_HIGH);
+      break;
+    case RED:
+      DIO_WritePin (PORTF, PIN1, LOGIC_HIGH);
+      DIO_WritePin (PORTF, PIN2, LOGIC_LOW);
+      DIO_WritePin (PORTF, PIN3, LOGIC_LOW);
+      
+      break;
+    case GREEN:
+      DIO_WritePin (PORTF, PIN1, LOGIC_LOW);
+      DIO_WritePin (PORTF, PIN2, LOGIC_LOW);
+      DIO_WritePin (PORTF, PIN3, LOGIC_HIGH);
+      break;
+    case BLUE:
+      DIO_WritePin (PORTF, PIN1, LOGIC_LOW);
+      DIO_WritePin (PORTF, PIN2, LOGIC_HIGH);
+      DIO_WritePin (PORTF, PIN3, LOGIC_LOW);
+      break;
+  default:
+    break;
+   
+  }
+
+   g_tick++;
+}
+
+void SPI_GetMessage(void){
+  
+  currentDirection = SSI_Recieve(SSI_Polling_Enable);
+  
+}
+
+int main (){
+  DIO_Init_pin (PORTF,PIN0,PIN_INPUT);
+  DIO_Init_pin (PORTF,PIN4,PIN_INPUT);
+  SET_BIT( GPIO_PORTF_PUR_R, PIN0);
+  SET_BIT( GPIO_PORTF_PUR_R, PIN4);
+  DIO_Init_pin (PORTF,PIN1,PIN_OUTPUT);
+  DIO_Init_pin (PORTF,PIN2,PIN_OUTPUT);
+  DIO_Init_pin (PORTF,PIN3,PIN_OUTPUT);
+  
+  
+  /*
+  SSI_Config_t SSI_Configuration;
+  SSI_Configuration.SSI_ID = SSI3_ID;
+  SSI_Configuration.Mode = SSI_SLAVE_OUTPUT_Disabled;
+  SSI_Configuration.Clk_Src = SSI_SysClk;
+  SSI_Configuration.Transmission_Freq = SSI_Transmission_FREQ_2MHz;
+  SSI_Configuration.Clk_Prescaler = SSI_Clk_Prescaler_2;
+  SSI_Configuration.Clk_Phase = DATA_CAP_FIRST_EDGE;
+  SSI_Configuration.Clk_Polarity = CLK_SS_LOW;
+  SSI_Configuration.ProtocolMode = FreeScale_SPI;
+  SSI_Configuration.DataSize = SSI_DATA_SIZE_8Bits;
+  
+  SSI_Init(&SSI_Configuration);
+    */
+ 
+  task_init(readSwitch,20);
+ // task_init(SPI_GetMessage,500);
+  task_init(switchStates,1000);
+   Systick_Start();
+  task_scheduler();
+  while(1)
+  {
+     
+  }
+  
+}       
